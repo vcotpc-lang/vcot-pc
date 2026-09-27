@@ -1,0 +1,6 @@
+{
+  "name": "TaskFlow",
+  "description": "A modern, responsive Kanban task management workspace with real-time Cloud Firestore sync, progress analytics, and interactive scheduling.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

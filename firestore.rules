@@ -1,0 +1,181 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net: Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Hardened Global Primitives
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // 3. Entity Validation Blueprints (Anti-Update-Gap)
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'displayName', 'theme', 'notificationsEnabled', 'demoSeeded', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'displayName', 'theme', 'notificationsEnabled', 'demoSeeded', 'createdAt', 'updatedAt'])
+        && data.uid is string
+        && data.uid.size() >= 1
+        && data.uid.size() <= 128
+        && data.uid.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.uid == request.auth.uid
+        && data.displayName is string
+        && data.displayName.size() >= 1
+        && data.displayName.size() <= 100
+        && data.theme is string
+        && data.theme.size() <= 10
+        && (data.theme == 'light' || data.theme == 'dark')
+        && data.notificationsEnabled is bool
+        && data.demoSeeded is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidUserPrivate(data) {
+      return data.keys().hasAll(['uid', 'email', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'email', 'createdAt', 'updatedAt'])
+        && data.uid is string
+        && data.uid.size() >= 1
+        && data.uid.size() <= 128
+        && data.uid.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.uid == request.auth.uid
+        && data.email is string
+        && data.email.size() >= 3
+        && data.email.size() <= 254
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidTask(data) {
+      return data.keys().hasAll(['userId', 'title', 'description', 'status', 'priority', 'dueDate', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['userId', 'title', 'description', 'status', 'priority', 'dueDate', 'createdAt', 'updatedAt'])
+        && data.userId is string
+        && data.userId.size() >= 1
+        && data.userId.size() <= 128
+        && data.userId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.userId == request.auth.uid
+        && data.title is string
+        && data.title.size() >= 1
+        && data.title.size() <= 200
+        && data.description is string
+        && data.description.size() >= 0
+        && data.description.size() <= 2000
+        && data.status is string
+        && data.status.size() <= 20
+        && (data.status == 'todo' || data.status == 'in-progress' || data.status == 'done')
+        && data.priority is string
+        && data.priority.size() <= 10
+        && (data.priority == 'low' || data.priority == 'medium' || data.priority == 'high')
+        && (data.dueDate == null || data.dueDate is timestamp)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // 4. Connection Health Probe (/test/connection)
+    match /test/{docId} {
+      allow get: if isValidId(docId) && docId == 'connection';
+      allow list, create, update, delete: if false;
+    }
+
+    // 5. User Profile Rules (/users/{userId})
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+      allow list: if false;
+      allow create: if isSignedIn()
+        && isValidId(userId)
+        && request.auth.uid == userId
+        && isValidUserProfile(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isSignedIn()
+        && isValidId(userId)
+        && isValidUserProfile(incoming())
+        && request.auth.uid == userId
+        && existing().uid == request.auth.uid
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'theme', 'notificationsEnabled', 'demoSeeded', 'updatedAt']);
+      allow delete: if false;
+
+      // 6. Isolated PII Subcollection (/users/{userId}/private/{docId})
+      match /private/{docId} {
+        allow get: if isSignedIn()
+          && isValidId(userId)
+          && isValidId(docId)
+          && request.auth.uid == userId
+          && get(/databases/$(database)/documents/users/$(userId)).data.uid == request.auth.uid;
+        allow list: if false;
+        allow create: if isSignedIn()
+          && isValidId(userId)
+          && isValidId(docId)
+          && request.auth.uid == userId
+          && isValidUserPrivate(incoming())
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && existsAfter(/databases/$(database)/documents/users/$(userId));
+        allow update: if isSignedIn()
+          && isValidId(userId)
+          && isValidId(docId)
+          && isValidUserPrivate(incoming())
+          && request.auth.uid == userId
+          && existing().uid == request.auth.uid
+          && incoming().uid == existing().uid
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['email', 'updatedAt'])
+          && get(/databases/$(database)/documents/users/$(userId)).data.uid == request.auth.uid;
+        allow delete: if false;
+      }
+    }
+
+    // 7. Tasks Collection (/tasks/{taskId})
+    match /tasks/{taskId} {
+      allow get: if isSignedIn()
+        && isValidId(taskId)
+        && existing().userId == request.auth.uid;
+      allow list: if isSignedIn()
+        && existing().userId == request.auth.uid;
+      allow create: if isSignedIn()
+        && isValidId(taskId)
+        && isValidTask(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && existsAfter(/databases/$(database)/documents/users/$(incoming().userId));
+      allow update: if isSignedIn()
+        && isValidId(taskId)
+        && isValidTask(incoming())
+        && existing().userId == request.auth.uid
+        && incoming().userId == existing().userId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Action 1: Status transition (Kanban drag-and-drop or checkbox toggle)
+          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']) ||
+          // Action 2: Priority change
+          incoming().diff(existing()).affectedKeys().hasOnly(['priority', 'updatedAt']) ||
+          // Action 3: Due date change
+          incoming().diff(existing()).affectedKeys().hasOnly(['dueDate', 'updatedAt']) ||
+          // Action 4: Full task edit via Edit Task Modal
+          incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'status', 'priority', 'dueDate', 'updatedAt'])
+        );
+      allow delete: if isSignedIn()
+        && isValidId(taskId)
+        && existing().userId == request.auth.uid;
+    }
+  }
+}

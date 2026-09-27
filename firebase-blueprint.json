@@ -1,0 +1,163 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile and workspace preferences stored per authenticated user.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Authenticated user UID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "User display name",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "theme": {
+          "type": "string",
+          "description": "Preferred UI theme",
+          "enum": ["light", "dark"]
+        },
+        "notificationsEnabled": {
+          "type": "boolean",
+          "description": "Whether in-app notifications are enabled"
+        },
+        "demoSeeded": {
+          "type": "boolean",
+          "description": "Whether initial demo tasks have been seeded for this user"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the profile was created"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the profile was last updated"
+        }
+      },
+      "required": [
+        "uid",
+        "displayName",
+        "theme",
+        "notificationsEnabled",
+        "demoSeeded",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "UserPrivate": {
+      "title": "UserPrivate",
+      "description": "Isolated PII document storing the user's email address.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Authenticated user UID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "User email address",
+          "minLength": 3,
+          "maxLength": 254
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the record was created"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the record was last updated"
+        }
+      },
+      "required": ["uid", "email", "createdAt", "updatedAt"]
+    },
+    "Task": {
+      "title": "Task",
+      "description": "A user task card on the TaskFlow Kanban board.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "UID of the user who owns the task",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "title": {
+          "type": "string",
+          "description": "Task title",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "description": "Detailed task description",
+          "minLength": 0,
+          "maxLength": 2000
+        },
+        "status": {
+          "type": "string",
+          "description": "Current workflow status column",
+          "enum": ["todo", "in-progress", "done"]
+        },
+        "priority": {
+          "type": "string",
+          "description": "Task urgency level",
+          "enum": ["low", "medium", "high"]
+        },
+        "dueDate": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Optional Firestore Timestamp or null for task deadline"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the task was created"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the task was last updated"
+        }
+      },
+      "required": [
+        "userId",
+        "title",
+        "description",
+        "status",
+        "priority",
+        "dueDate",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile document storing non-PII display name and preferences."
+    },
+    "/users/{userId}/private/{docId}": {
+      "schema": "UserPrivate",
+      "description": "Split subcollection isolating user PII (email)."
+    },
+    "/tasks/{taskId}": {
+      "schema": "Task",
+      "description": "Tasks collection isolated per authenticated user via userId."
+    }
+  }
+}
